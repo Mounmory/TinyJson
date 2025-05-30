@@ -405,7 +405,8 @@ public:
 			strRet = "null";
 			break;
 		case emJsonType::Object: {
-			strRet = 0 == depth ? pad + "{\n" : "\n" + pad + "{\n";
+			//strRet = 0 == depth ? pad + "{\n" : "\n" + pad + "{\n";
+			strRet = "{\n" ;
 			bool skip = true;
 			for (auto &p : *Internal.Map) 
 			{
@@ -417,7 +418,8 @@ public:
 			break;
 		}
 		case emJsonType::Array: {
-			strRet = 0 == depth ? pad + "[\n" : "\n" + pad + "[\n";
+			//strRet = 0 == depth ? pad + "[\n" : "\n" + pad + "[\n";
+			strRet = "[\n" ;
 			std::string childPad = pad + tab;
 			bool skip = true;
 			for (auto &p : *Internal.List) 
