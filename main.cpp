@@ -57,7 +57,7 @@ int main()
 	jvObj["array"].append(6.9);
 	jvObj["array"].append(18);
 
-	int64_t llMin = jvObj["Int64Min"].toInt();
+	int64_t llMin = jvObj["Int64Min"].get<int64_t>();
 	std::cout << "Int64Min " << llMin << std::endl;
 
 	std::cout << "修改后输出Json内容" << std::endl; 
