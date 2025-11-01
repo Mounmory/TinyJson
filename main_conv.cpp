@@ -1,7 +1,8 @@
 ﻿#include <iostream>
 #include "JsonConverter.hpp"
 
-enum class EM_type 
+
+enum class EM_type
 {
 	TYPE_1,
 	TYPE_2
@@ -38,7 +39,7 @@ struct WrapData
 	ADD_JSON_MEMBER(listDataDer, optBase, optDerive, optDataEmpty, fValue);
 };
 
-struct ErrorData
+struct ErrorTest
 {
 	uint16_t sData = 65535;
 	std::optional<int32_t> opLData = 0;
@@ -47,19 +48,20 @@ struct ErrorData
 };
 
 
-int main() 
+int main()
 {
 	//option成员为空，不异常
 	try
 	{
 		std::cout << "/******************  option成员为空，不异常  ********************/" << std::endl;
-		ErrorData eData;
+		ErrorTest eData;
 		Json::Value jvData;
 		jvData["sData"] = 123;
 		jvData["fData"] = 133;
-		eData.parseJson(jvData);
+		jvData >> eData;
+		std::cout << "sData:" << eData.sData << std::endl;
 	}
-	catch (const std::exception& e) 
+	catch (const std::exception& e)
 	{
 		std::cout << "exception info:" << e.what() << std::endl;
 	}
@@ -67,10 +69,10 @@ int main()
 	try
 	{
 		std::cout << "/******************  非option成员为空，异常  ********************/" << std::endl;
-		ErrorData eData;
+		ErrorTest eData;
 		Json::Value jvData;
 		jvData["sData"] = 123;
-		eData.parseJson(jvData);
+		jvData >> eData;
 	}
 	catch (const std::exception& e)
 	{
@@ -84,6 +86,7 @@ int main()
 		std::cout << "/******************  结构体与Json互转  ********************/" << std::endl;
 		WrapData data;
 		DeriveData dataDerive;
+		Json::Value outJson;
 
 		data.listDataDer.emplace_back(dataDerive);
 		dataDerive.lData = 12;
@@ -94,11 +97,11 @@ int main()
 		data.optBase = dataDerive;//将派生类赋值给基类
 		data.optDerive = dataDerive;//派生类赋值给派生类
 
-		auto outJson = data.generateJson();
-		std::cout <<"结构体转json结果\n" << outJson.dumpStyle() << std::endl;
+		outJson << data;
+		std::cout << "结构体转json结果\n" << outJson.dumpStyle() << std::endl;
 
 		WrapData outWrap;
-		outWrap.parseJson(outJson);
+		outJson >> outWrap;
 		std::cout << "json转结构体结果\n" << outJson.dumpStyle() << std::endl;
 	}
 	catch (const std::exception& e)

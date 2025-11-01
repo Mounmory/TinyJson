@@ -17,12 +17,12 @@
 /*
 	JsonConverter实现通过宏定义，将结构体与Json之间实现轻松互转
 	结构体内成员函数支持如下类型
-		- 数字类型（整型、浮点型、布尔型等（暂不支uint64）
+		- 字符串及数字类型（std::string、整型、浮点型、布尔型等）
 		- 枚举类型
 		- Josn类型
-		- 已经定义了结构转化的其它结构体
-		- 数组（std::vector、std::list），模板参数可以时基本数据类型及定义转换接口的结构体
-		- std::optional，模板参数可以时基本数据类型及定义转换接口的结构体
+		- 已经使用宏定义了结构转化的自定义数据结构
+		- 数组（std::vector、std::list），模板参数可以是基本数据类型及定义转换接口的结构体
+		- std::optional，模板参数可以是基本数据类型及定义转换接口的结构体
 	暂不支持智能指针类型（主要涉及多态，指向派生类的基类指针，可以生成包含基类数据的Json，但通过包含基类数据的Json生成指向派生对象的基类指针比较复杂）
 	将一个包含派生类数据的Json，使用基类对象解析后，只保留基类部分数据
 */
@@ -35,7 +35,10 @@ template<typename T, typename = void>
 struct enable_json_convert : std::false_type {};
 template<typename T>
 struct enable_json_convert<T,
-	decltype(std::declval<T>().generateJson(), std::declval<T>().parseJson(std::declval<const Json::Value&>()), void())> //包含generateJson和parseJson接口
+	decltype(std::declval<T>().generateJson()
+		//, std::declval<T>().generateJson((std::declval<Json::Value&>()))
+		, std::declval<T>().parseJson(std::declval<const Json::Value&>())
+		, void())> //包含generateJson和parseJson接口
 	:std::true_type {};
 
 //是否为容器
@@ -355,6 +358,20 @@ inline void parseJsonVars(const Json::Value& jvData, const char* name, T& value,
 }
 
 }
+//template<typename _Ty>
+//inline auto operator << (Json::Value& jvData, const _Ty& data) ->typename std::enable_if<mmrUtil::enable_json_convert<_Ty>::value, Json::Value&>::type
+//{
+//	jvData.clear();
+//	data.generateJson(jvData);
+//	return jvData;
+//}
+//
+//template<typename _Ty>
+//inline auto operator >> (Json::Value& jvData, _Ty& data) ->typename std::enable_if<mmrUtil::enable_json_convert<_Ty>::value, Json::Value&>::type
+//{
+//	data.parseJson(jvData);
+//	return jvData;
+//}
 
 #define ADD_JSON_MEMBER(...) 	\
 public:\
@@ -369,6 +386,7 @@ void parseJson(const Json::Value& ANameShouldNotBeSameWithStructMember23af00fa9)
 	mmrUtil::parseJsonVars(ANameShouldNotBeSameWithStructMember23af00fa9, #__VA_ARGS__, __VA_ARGS__); \
 }\
 protected:\
+friend class Json::Value;\
 void generateJson(Json::Value& ANameShouldNotBeSameWithStructMember23af00fa9) const\
 {\
 	mmrUtil::generatJsonVars(ANameShouldNotBeSameWithStructMember23af00fa9, #__VA_ARGS__, __VA_ARGS__); \
@@ -390,6 +408,7 @@ void parseJson(const Json::Value& ANameShouldNotBeSameWithStructMember23af00fa9)
 	mmrUtil::parseJsonVars(ANameShouldNotBeSameWithStructMember23af00fa9, #__VA_ARGS__, __VA_ARGS__); \
 }\
 protected:\
+friend class Json::Value;\
 void generateJson(Json::Value& ANameShouldNotBeSameWithStructMember23af00fa9) const\
 {\
 	Base::generateJson(ANameShouldNotBeSameWithStructMember23af00fa9);\

@@ -270,12 +270,18 @@ namespace Json
 			SetType(emJsonType::String); *Internal.String = std::string(s); return *this;
 		}
 
-		//template<typename _Ty>
-		//typename std::enable_if<enable_json_convert<_Ty>::value, Value&>::type operator = (_Ty data)//定义了generateJson接口
-		//{
-		//	*this = data.generateJson();
-		//	return *this;
-		//}
+		template<typename _Ty>
+		Json::Value& operator << (const _Ty& data){
+			clear();
+			data.generateJson(*this);
+			return *this;
+		}
+
+		template<typename _Ty>
+		Json::Value& operator >> ( _Ty& data){
+			data.parseJson(*this);
+			return *this;
+		}
 
 		Value& operator[](const std::string &key) {
 			SetType(emJsonType::Object); return Internal.Map->operator[](key);
@@ -355,34 +361,36 @@ namespace Json
 
 		template<typename T>
 		typename std::enable_if<std::is_arithmetic<T>::value, T>::type get(bool& bRet) const
+	{
+		bRet = true;
+		static constexpr auto numMax = (std::numeric_limits<T>::max)();
+		static constexpr auto numMin = (std::numeric_limits<T>::min)();
+		switch (Type)
 		{
-			bRet = true;
-			switch (Type)
-			{
-				//case emJsonType::Null: return T();
-			case emJsonType::Boolean: return Internal.Bool;
-			case emJsonType::Integral:
-			{
-				if (Internal.Int >= (std::numeric_limits<T>::min)() && (std::numeric_limits<T>::max)() >= Internal.Int)
-					return Internal.Int;
-			}
-			break;
-			case emJsonType::Uintegral:
-			{
-				if (Internal.Uint64 >= (std::numeric_limits<T>::min)() && Internal.Uint64 <= (std::numeric_limits<T>::max)())
-					return Internal.Uint64;
-			}break;
-			case emJsonType::Floating:
-			{
-				if (Internal.Float >= (std::numeric_limits<T>::min)() && Internal.Float <= (std::numeric_limits<T>::max)())
-					return Internal.Float;
-			}break;
-			default:
-				break;
-			}
-			bRet = false;
-			return T();
+		//case emJsonType::Null: return T();
+		case emJsonType::Boolean: return Internal.Bool;
+		case emJsonType::Integral:
+		{
+			if (Internal.Int >= numMin && numMax >= Internal.Int)
+				return Internal.Int;
 		}
+		break;
+		case emJsonType::Uintegral:
+		{
+			if (Internal.Uint64 >= numMin && numMax >= Internal.Uint64)
+				return Internal.Uint64;
+		}break;
+		case emJsonType::Floating:
+		{
+			if (Internal.Float >= numMin && numMax >= Internal.Float)
+				return Internal.Float;
+		}break;
+		default:
+			break;
+		}
+		bRet = false;
+		return T();
+	}
 
 		template<typename T>
 		typename std::enable_if<std::is_same<std::decay_t<T>, std::string>::value, std::string>::type
