@@ -32,8 +32,10 @@ The source code references the project [SimpleJSON](https://github.com/nbsdx/Sim
 - Enumeration types
 - JSON type
 - Custom data structures that have already used the macro-defined struct conversion
-- Arrays (std::vector, std::list), where the template parameter can be a fundamental data type or a struct that defines the conversion interface
-- std::optional, where the template parameter can be a fundamental data type or a struct that defines the conversion interface
+- `std::shared_ptr`/`std::unique_ptr` types whose template parameters are also fundamental data types or structs that define a conversion interface. For inheritance hierarchies, a base class pointer will not handle derived class data types
+- `std::optional`, where the template parameter can be a fundamental data type or a struct that defines the conversion interface
+- Arrays (`std::vector`, `std::list`), where the template parameter can be a fundamental data type or a struct that defines the conversion interface
+-  `std::map`, must use `std::string` for its keys. The values can be either fundamental data types, structs that define a conversion interface
 
 Smart pointer types are temporarily not supported (mainly due to issues involving polymorphism and base class pointers pointing to derived classes. While JSON containing base class data can be generated, generating a base class pointer pointing to a derived object from JSON containing derived class data is complex). If JSON containing derived class data is parsed using a base class object, only the base class portion of the data will be retained.
 

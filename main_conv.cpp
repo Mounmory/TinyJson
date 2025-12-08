@@ -35,11 +35,16 @@ struct WrapData
 	std::optional<BaseData> optBase;//保存派生类中基类
 	std::optional<DeriveData> optDerive;//派生类
 	std::optional<DeriveData> optDataEmpty;//保存空的
+	std::map<std::string, std::optional<DeriveData>> mapData;
+	std::shared_ptr<BaseData> ptrBase;
+	std::shared_ptr<int32_t> ptrlData;
+	std::unique_ptr<float> ptrfData;
+	std::unique_ptr<double> ptrdData;
 	float fValue = 2.9;
-	ADD_JSON_MEMBER(listDataDer, optBase, optDerive, optDataEmpty, fValue);
+	ADD_JSON_MEMBER(listDataDer, optBase, optDerive, optDataEmpty, mapData, ptrBase, ptrlData, ptrfData, ptrdData, fValue);
 };
 
-struct ErrorTest
+struct ErrorData
 {
 	uint16_t sData = 65535;
 	std::optional<int32_t> opLData = 0;
@@ -48,20 +53,27 @@ struct ErrorTest
 };
 
 
-int main()
+int main() 
 {
+
+	Json::Value jv;
+	jv["haha"] = 33;
+	for (const auto iterMap : jv.ObjectRange())
+	{
+		std::cout << iterMap.first << " " << iterMap.second.get<int32_t>() << std::endl;
+	}
 	//option成员为空，不异常
 	try
 	{
 		std::cout << "/******************  option成员为空，不异常  ********************/" << std::endl;
-		ErrorTest eData;
+		ErrorData eData;
 		Json::Value jvData;
 		jvData["sData"] = 123;
 		jvData["fData"] = 133;
 		jvData >> eData;
-		std::cout << "sData:" << eData.sData << std::endl;
+		std::cout <<"sData:"<< eData.sData << std::endl;
 	}
-	catch (const std::exception& e)
+	catch (const std::exception& e) 
 	{
 		std::cout << "exception info:" << e.what() << std::endl;
 	}
@@ -69,7 +81,7 @@ int main()
 	try
 	{
 		std::cout << "/******************  非option成员为空，异常  ********************/" << std::endl;
-		ErrorTest eData;
+		ErrorData eData;
 		Json::Value jvData;
 		jvData["sData"] = 123;
 		jvData >> eData;
@@ -96,9 +108,13 @@ int main()
 		data.listDataDer.emplace_back(dataDerive);
 		data.optBase = dataDerive;//将派生类赋值给基类
 		data.optDerive = dataDerive;//派生类赋值给派生类
-
+		data.mapData["aa"] = dataDerive;
+		data.mapData["bb"];
+		data.ptrBase = std::make_unique<BaseData>();
+		data.ptrBase->fData = 12.04;
+		data.ptrfData = std::make_unique<float>(777.998);
 		outJson << data;
-		std::cout << "结构体转json结果\n" << outJson.dumpStyle() << std::endl;
+		std::cout <<"结构体转json结果\n" << outJson.dumpStyle() << std::endl;
 
 		WrapData outWrap;
 		outJson >> outWrap;
