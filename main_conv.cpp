@@ -17,7 +17,8 @@ struct BaseData
 	float fData = 4.6;
 	EM_type ty1 = EM_type::TYPE_2;
 	Json::Value jvData;
-	ADD_JSON_MEMBER(lData, dData, str, fData, ty1, jvData);
+	std::map<std::string, std::vector<std::optional<std::shared_ptr<std::string>>>> mapData;//一个多层嵌套模板类型成员
+	ADD_JSON_MEMBER(lData, dData, str, fData, ty1, jvData, mapData);
 };
 
 //继承自基类
@@ -101,6 +102,7 @@ int main()
 		Json::Value outJson;
 
 		data.listDataDer.emplace_back(dataDerive);
+		dataDerive.mapData["maltimap"] = { std::make_shared<std::string>(("value")) };//多层模板嵌套类型
 		dataDerive.lData = 12;
 		dataDerive.str = "str2";
 		dataDerive.jvData["test"] = 20;

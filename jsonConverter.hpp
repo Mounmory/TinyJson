@@ -34,7 +34,7 @@
 namespace mmrUtil
 {
 
-//获取包装下的基础类型
+//获取包装下一层的类型
 template<typename T>
 struct extract_value_type { using type = T; };
 template<typename T>
@@ -49,15 +49,34 @@ template<typename T>
 struct extract_value_type<std::optional<T>> { using type = T; };
 template<typename T>
 struct extract_value_type<std::map<std::string, T>> { using type = T; };
+template<typename T>
+using extract_value_type_t = typename extract_value_type<T>::type;
 
+//获取多层模板嵌套的最底层类型
+template<typename T>
+struct basic_value_type { using type = T; };
+template<typename T>
+struct basic_value_type<std::vector<T>> { using type = typename basic_value_type<T>::type; };
+template<typename T>
+struct basic_value_type<std::list<T>> { using type = typename basic_value_type<T>::type; };
+template<typename T>
+struct basic_value_type<std::shared_ptr<T>> { using type = typename basic_value_type<T>::type; };
+template<typename T>
+struct basic_value_type<std::unique_ptr<T>> { using type = typename basic_value_type<T>::type; };
+template<typename T>
+struct basic_value_type<std::optional<T>> { using type = typename basic_value_type<T>::type; };
+template<typename T>
+struct basic_value_type<std::map<std::string, T>> { using type = typename basic_value_type<T>::type; };
+template<typename T>
+using basic_value_type_t = typename basic_value_type<T>::type;
+
+//去除前后空格
 inline std::string trim(const char* start, const char* end)
 {
-	while (start < end && std::isspace(static_cast<unsigned char>(*start))) {
+	while (start < end && std::isspace(static_cast<unsigned char>(*start))) 
 		++start;
-	}
-	while (end > start && std::isspace(static_cast<unsigned char>(*(end - 1)))) {
+	while (end > start && std::isspace(static_cast<unsigned char>(*(end - 1))))
 		--end;
-	}
 	return std::string(start, end);
 }
 
@@ -85,11 +104,11 @@ struct is_convertable_to_json_type
 
 //是否为shared_ptr或者unique_ptr
 template<typename T>
-struct is_shared_ptr : std::false_type {};
+struct is_smart_ptr : std::false_type {};
 template<typename T>
-struct is_shared_ptr<std::shared_ptr<T>> : std::true_type {};
+struct is_smart_ptr<std::shared_ptr<T>> : std::true_type {};
 template<typename T>
-struct is_shared_ptr<std::unique_ptr<T>> : std::true_type {};
+struct is_smart_ptr<std::unique_ptr<T>> : std::true_type {};
 
 //是否为optional
 template<typename T>
@@ -99,11 +118,11 @@ struct is_optional<std::optional<T>> : std::true_type {};
 
 //是否为vector或list
 template<typename T>
-struct is_std_container : std::false_type {};
+struct is_std_list : std::false_type {};
 template<typename T>
-struct is_std_container<std::vector<T>> : std::true_type {};
+struct is_std_list<std::vector<T>> : std::true_type {};
 template<typename T>
-struct is_std_container<std::list<T>> : std::true_type {};
+struct is_std_list<std::list<T>> : std::true_type {};
 
 //是否为map
 template<typename T>
@@ -115,52 +134,6 @@ struct is_map<std::map<std::string, T>> : std::true_type {};
 /*****************************************************************/
 /*                          数据类型转Json                       */
 /*****************************************************************/
-#if  0//__cplusplus >= CPP_17 //暂时不用cpp17特性
-template<typename _Ty>
-inline Json::Value toJson(const _Ty& data)
-{
-	using extract_type = typename extract_value_type<std::decay_t<_Ty>>::type;
-	static_assert(is_convertable_to_json_type<extract_type>::value, "subtype error");
-
-	if constexpr (std::is_arithmetic<std::decay_t<_Ty>>::value
-		|| std::is_same<std::decay_t<_Ty>, std::string>::value
-		|| std::is_same<std::decay_t<_Ty>, Json::Value>::value)
-	{
-		return  data;
-	}
-	else if constexpr (std::is_enum<std::decay_t<_Ty>>::value)
-	{
-		using Type = std::underlying_type_t<_Ty>;
-		return static_cast<Type>(data);
-	}
-	else if constexpr (enable_json_convert<_Ty>::value)
-	{
-		return data.generateJson();
-	}
-	else if constexpr (is_std_container<_Ty>::value)
-	{
-		Json::Value jvRet;
-		for (const auto& iterData : data)
-		{
-			jvRet.append(toJson(iterData));
-		}
-		return jvRet;
-	}
-	else if constexpr (is_optional<_Ty>::value)
-	{
-		if (data.has_value())
-		{
-			return toJson(data.value());
-		}
-		return Json::Value();
-	}
-	else
-	{
-		static_assert([] { return false; }(), "invalid data type");
-	}
-}
-
-#else
 //基本数据类型、string和Json::Value类型
 template<typename _Ty>
 inline auto toJson(const _Ty& data)->typename std::enable_if<std::is_arithmetic<std::decay_t<_Ty>>::value
@@ -173,9 +146,9 @@ inline auto toJson(const _Ty& data)->typename std::enable_if<std::is_arithmetic<
 
 //枚举类型
 template<typename _Ty>
-inline auto toJson(const _Ty& data)->typename std::enable_if<std::is_enum<std::decay_t<_Ty>>::value, Json::Value>::type
+inline auto toJson(const _Ty& data)->typename std::enable_if<std::is_enum<_Ty>::value, Json::Value>::type
 {
-	using Type = std::underlying_type_t<_Ty>;
+	using Type = typename std::underlying_type<_Ty>::type;
 	return static_cast<Type>(data);
 }
 
@@ -183,47 +156,48 @@ inline auto toJson(const _Ty& data)->typename std::enable_if<std::is_enum<std::d
 template<typename _Ty>
 inline auto toJson(const _Ty& data)->typename std::enable_if<enable_json_convert<_Ty>::value, Json::Value>::type
 {
-	using extract_type = typename extract_value_type<std::decay_t<_Ty>>::type;
+	using extract_type = typename extract_value_type<_Ty>::type;
 	static_assert(is_convertable_to_json_type<extract_type>::value, "subtype error");
 	return data.generateJson();
 }
 
 //shared_ptr或者unique_ptr值
 template<typename _Ty>
-inline auto toJson(const _Ty& data)->typename std::enable_if<is_shared_ptr<_Ty>::value, Json::Value>::type
+inline auto toJson(const _Ty& data)->typename std::enable_if<is_smart_ptr<_Ty>::value, Json::Value>::type
 {
-	using extract_type = typename extract_value_type<std::decay_t<_Ty>>::type;
-	static_assert(is_convertable_to_json_type<extract_type>::value, "subtype error");
+	using extract_type = typename extract_value_type_t<_Ty>;
+	using basic_type = typename basic_value_type_t<_Ty>;
+	static_assert(is_convertable_to_json_type<basic_type>::value, "basic type error");
 	if(nullptr == data)
 		return Json::Value();
 	else 
-		return toJson(*data);
+		return toJson<extract_type>(*data);
 }
 
 //optional，有值或没有值
 template<typename _Ty>
 inline auto toJson(const _Ty& data)->typename std::enable_if<is_optional<_Ty>::value, Json::Value>::type
 {
-	using extract_type = typename extract_value_type<std::decay_t<_Ty>>::type;
-	static_assert(is_convertable_to_json_type<extract_type>::value, "subtype error");
+	using extract_type = typename extract_value_type_t<_Ty>;
+	using basic_type = typename basic_value_type_t<_Ty>;
+	static_assert(is_convertable_to_json_type<basic_type>::value, "basic type error");
 	if (data.has_value())
 	{
-		return toJson(data.value());
+		return toJson<extract_type>(data.value());
 	}
 	return Json::Value();
 }
 
 //容器数组
 template<typename _Ty>
-inline auto toJson(const _Ty& data)->typename std::enable_if<is_std_container<_Ty>::value, Json::Value>::type
+inline auto toJson(const _Ty& data)->typename std::enable_if<is_std_list<_Ty>::value, Json::Value>::type
 {
-	using extract_type = typename extract_value_type<std::decay_t<_Ty>>::type;
-	using extract_type_sub = typename extract_value_type<extract_type>::type;
-	static_assert(is_convertable_to_json_type<extract_type>::value || is_convertable_to_json_type<extract_type_sub>::value, "subtype error");
-	Json::Value jvRet;
+	using extract_type = typename extract_value_type_t<_Ty>;
+	using basic_type = typename basic_value_type_t<_Ty>;
+	static_assert(is_convertable_to_json_type<basic_type>::value, "basic type error");	Json::Value jvRet;
 	for (const auto& iterData : data)
 	{
-		jvRet.append(toJson(iterData));
+		jvRet.append(toJson<extract_type>(iterData));
 	}
 	return jvRet;
 }
@@ -232,108 +206,62 @@ inline auto toJson(const _Ty& data)->typename std::enable_if<is_std_container<_T
 template<typename _Ty>
 inline auto toJson(const _Ty& data)->typename std::enable_if<is_map<_Ty>::value, Json::Value>::type
 {
-	using extract_type = typename extract_value_type<std::decay_t<_Ty>>::type;
-	using extract_type_sub = typename extract_value_type<extract_type>::type;
-	static_assert(is_convertable_to_json_type<extract_type>::value || is_convertable_to_json_type<extract_type_sub>::value, "subtype error");
+	using extract_type = typename extract_value_type_t<_Ty>;
+	using basic_type = typename basic_value_type_t<_Ty>;
+	static_assert(is_convertable_to_json_type<basic_type>::value, "basic type error");
 	Json::Value jvRet;
 	for (const auto& iterData : data)
 	{
-		jvRet[iterData.first] = toJson(iterData.second);
+		jvRet[iterData.first] = toJson<extract_type>(iterData.second);
 	}
 	return jvRet;
 }
 
-#endif
-
-
 /*****************************************************************/
 /*                          Json转数据类型                       */
 /*****************************************************************/
-#if 0 //__cplusplus >= CPP_17 //暂时不用cpp17特性
-template<typename _Ty>
-inline auto fromJson(const Json::Value& jvData)
-{
-	using retType = std::decay_t<_Ty>;
-	using extract_type = typename extract_value_type<retType>::type;
-	static_assert(is_convertable_to_json_type<extract_type>::value, "subtype error");
-
-	if constexpr (std::is_arithmetic<retType>::value || std::is_same<retType, std::string>::value)
-	{
-		return jvData.get<retType>();
-	}
-	else if constexpr (std::is_same<retType, Json::Value>::value)
-	{
-		return jvData;
-	}
-	else if constexpr (std::is_enum<retType>::value)
-	{
-		return static_cast<_Ty>(jvData.toNum<std::underlying_type_t<_Ty>>());
-	}
-	else if constexpr (enable_json_convert<retType>::value)
-	{
-		retType data;
-		data.parseJson(jvData);
-		return data;
-	}
-	else if constexpr (is_std_container<retType>::value)
-	{
-		retType retArray;
-		for (const auto& iterJv : jvData.ArrayRange())
-		{
-			retArray.emplace_back(fromJson<extract_type>(iterJv));
-		}
-		return retArray;
-	}
-	else if constexpr (is_optional<retType>::value)
-	{
-		return fromJson<extract_type>(jvData);
-	}
-	else
-	{
-		static_assert([] { return false; }(), "invalid data type");
-	}
-}
-#else
 //数字或字符串类型
 template<typename _Ty>
-inline auto fromJson(const Json::Value& jvData) ->typename std::enable_if<std::is_arithmetic<std::decay_t<_Ty>>::value
-	|| std::is_same<std::decay_t<_Ty>, std::string>::value, _Ty>::type
+inline auto fromJson(const Json::Value& jvData) ->typename std::enable_if<std::is_arithmetic<_Ty>::value
+	|| std::is_same<_Ty, std::string>::value, _Ty>::type
 {
-	return jvData.get<std::decay_t<_Ty>>();
+	return jvData.get<_Ty>();
 }
 
 //JSON类型
 template<typename _Ty>
-inline auto fromJson(const Json::Value& jvData) ->typename std::enable_if<std::is_same<std::decay_t<_Ty>, Json::Value>::value, Json::Value>::type
+inline auto fromJson(const Json::Value& jvData) ->typename std::enable_if<std::is_same<_Ty, Json::Value>::value, Json::Value>::type
 {
 	return jvData;
 }
 
 //枚举类型
 template<typename _Ty>
-inline auto fromJson(const Json::Value& jvData)->typename std::enable_if<std::is_enum<std::decay_t<_Ty>>::value, std::decay_t<_Ty>>::type
+inline auto fromJson(const Json::Value& jvData)->typename std::enable_if<std::is_enum<_Ty>::value, _Ty>::type
 {
-	using Type = std::underlying_type_t<_Ty>;
-	return static_cast<std::decay_t<_Ty>>(jvData.toNum<Type>());
+	using Type = typename std::underlying_type<_Ty>::type;
+	return static_cast<_Ty>(jvData.toNum<Type>());
 }
 
 //自定义了转Json接口的结构体
 template<typename _Ty>
-inline auto fromJson(const Json::Value& jvData)->typename std::enable_if<enable_json_convert<std::decay_t<_Ty>>::value, std::decay_t<_Ty>>::type
+inline auto fromJson(const Json::Value& jvData)->typename std::enable_if<enable_json_convert<_Ty>::value, _Ty>::type
 {
-	using extract_type = typename extract_value_type<std::decay_t<_Ty>>::type;
-	static_assert(is_convertable_to_json_type<extract_type>::value, "subtype error");
-	std::decay_t<_Ty> data;
+	using extract_type = typename extract_value_type_t<_Ty>;
+	using basic_type = typename basic_value_type_t<_Ty>;
+	static_assert(is_convertable_to_json_type<basic_type>::value, "basic type error");
+	_Ty data;
 	data.parseJson(jvData);
 	return data;
 }
 
 //shar_ptr或unique_ptr
 template<typename _Ty>
-inline auto fromJson(const Json::Value& jvData)->typename std::enable_if<is_shared_ptr<std::decay_t<_Ty>>::value, std::decay_t<_Ty>>::type 
+inline auto fromJson(const Json::Value& jvData)->typename std::enable_if<is_smart_ptr<_Ty>::value, _Ty>::type 
 {
-	using extract_type = typename extract_value_type<std::decay_t<_Ty>>::type;
-	static_assert(is_convertable_to_json_type<extract_type>::value, "subtype error");
+	using extract_type = typename extract_value_type_t<_Ty>;
+	using basic_type = typename basic_value_type_t<_Ty>;
+	static_assert(is_convertable_to_json_type<basic_type>::value, "basic type error");
 	if (jvData.IsNull())
 		return nullptr;
 	else
@@ -342,10 +270,11 @@ inline auto fromJson(const Json::Value& jvData)->typename std::enable_if<is_shar
 
 //optional
 template<typename _Ty>
-inline auto fromJson(const Json::Value& jvData)->typename std::enable_if<is_optional<std::decay_t<_Ty>>::value, std::decay_t<_Ty>>::type
+inline auto fromJson(const Json::Value& jvData)->typename std::enable_if<is_optional<_Ty>::value, _Ty>::type
 {
-	using extract_type = typename extract_value_type<std::decay_t<_Ty>>::type;
-	static_assert(is_convertable_to_json_type<extract_type>::value, "subtype error");
+	using extract_type = typename extract_value_type_t<_Ty>;
+	using basic_type = typename basic_value_type_t<_Ty>;
+	static_assert(is_convertable_to_json_type<basic_type>::value, "basic type error");
 	if (jvData.IsNull())
 		return std::nullopt;
 	else
@@ -354,12 +283,11 @@ inline auto fromJson(const Json::Value& jvData)->typename std::enable_if<is_opti
 
 //容器数组
 template<typename _Ty>
-inline auto fromJson(const Json::Value& jvData)->typename std::enable_if<is_std_container<std::decay_t<_Ty>>::value, std::decay_t<_Ty>>::type
+inline auto fromJson(const Json::Value& jvData)->typename std::enable_if<is_std_list<_Ty>::value, _Ty>::type
 {
-	using extract_type = typename extract_value_type<std::decay_t<_Ty>>::type;
-	using extract_type_sub = typename extract_value_type<extract_type>::type;
-	static_assert(is_convertable_to_json_type<extract_type>::value || is_convertable_to_json_type<extract_type_sub>::value, "subtype error");
-	std::decay_t<_Ty> retArray;
+	using extract_type = typename extract_value_type_t<_Ty>;
+	using basic_type = typename basic_value_type_t<_Ty>;
+	static_assert(is_convertable_to_json_type<basic_type>::value, "basic type error");	_Ty retArray;
 	for (const auto& iterJv : jvData.ArrayRange())
 	{
 		retArray.emplace_back(fromJson<extract_type>(iterJv));
@@ -369,20 +297,18 @@ inline auto fromJson(const Json::Value& jvData)->typename std::enable_if<is_std_
 
 //map
 template<typename _Ty>
-inline auto fromJson(const Json::Value& jvData)->typename std::enable_if<is_map<std::decay_t<_Ty>>::value, std::decay_t<_Ty>>::type
+inline auto fromJson(const Json::Value& jvData)->typename std::enable_if<is_map<_Ty>::value, _Ty>::type
 {
-	using extract_type = typename extract_value_type<std::decay_t<_Ty>>::type;
-	using extract_type_sub = typename extract_value_type<extract_type>::type;
-	static_assert(is_convertable_to_json_type<extract_type>::value || is_convertable_to_json_type<extract_type_sub>::value, "subtype error");
-	using DataType = std::decay_t<_Ty>;
-	DataType mapRet;
+	using extract_type = typename extract_value_type_t<_Ty>;
+	using basic_type = typename basic_value_type_t<_Ty>;
+	static_assert(is_convertable_to_json_type<basic_type>::value, "basic type error");
+	_Ty mapRet;
 	for (const auto& iterMap : jvData.ObjectRange())
 	{
 		mapRet[iterMap.first] = fromJson<extract_type>(iterMap.second);
 	}
 	return mapRet;
 }
-#endif
 
 /*****************************************************************/
 /*                         类型数据转Json函数                    */
@@ -424,7 +350,7 @@ inline void parseJsonVars(const Json::Value& jvData, const char* name, T& value,
 		std::string strKey = trim(name, comma);
 		if (jvData.hasKey(strKey))
 			value = fromJson<dataType>(jvData.at(strKey));
-		else if (!is_optional<dataType>::value && !is_std_container<dataType>::value)
+		else if (!is_optional<dataType>::value && !is_std_list<dataType>::value && !is_smart_ptr<dataType>::value)
 			throw std::runtime_error(std::string("Key [" + strKey + "] do not exist."));
 		parseJsonVars(jvData, comma + 1, args...);
 	}
@@ -433,7 +359,7 @@ inline void parseJsonVars(const Json::Value& jvData, const char* name, T& value,
 		std::string strKey = trim(name, name + strlen(name));
 		if (jvData.hasKey(strKey))
 			value = fromJson<dataType>(jvData.at(strKey));
-		else if (!is_optional<dataType>::value && !is_std_container<dataType>::value)
+		else if (!is_optional<dataType>::value && !is_std_list<dataType>::value && !is_smart_ptr<dataType>::value)
 			throw std::runtime_error(std::string("Key [" + strKey + "] do not exist."));
 	}
 }
