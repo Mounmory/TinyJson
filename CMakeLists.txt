@@ -84,6 +84,9 @@ file(GLOB HEADERS "*.h" "*.hpp")
 add_executable(jsonTest ${HEADERS} main.cpp)
 
 add_executable(jsonConvTest ${HEADERS} main_conv.cpp)
+
+add_executable(jsonDepTest ${HEADERS} main_dep.cpp)
+
 if(UNIX )
 	target_link_libraries(jsonTest pthread)
 	target_link_libraries(jsonConvTest pthread)

@@ -26,10 +26,23 @@
 		- std::optional，模板参数可以时基本数据类型及定义转换接口的结构体
 		- 数组（std::vector、std::list），模板参数可以时基本数据类型及定义转换接口的结构体
 		- std::map，key必须为std::string,value必须是可以时基本数据类型及定义转换接口的结构体
-	暂不支持智能指针类型（主要涉及多态，指向派生类的基类指针，可以生成包含基类数据的Json，但通过包含基类数据的Json生成指向派生对象的基类指针比较复杂）
-	将一个包含派生类数据的Json，使用基类对象解析后，只保留基类部分数据
+	
+	多态支持方式
+	    使用宏“ADD_JSON_MEMBER_BASE_DEPL”注册顶层基类类型和成员
+		使用宏“ADD_JSON_MEMBER_DERIVE_DEPL”注册各层派生类类型和成员
+		在cpp14标准中，无论是基类还是派生类，还要使用“REGISTER_TEPE”将注册类型
+	  
 */
 
+//多态中，Json转具体结构体时，保存类型信息字段
+#ifndef FINAL_CLASS_TYPE
+#define FINAL_CLASS_TYPE "PolymorphicFinalClassType"
+#endif // FINAL_CLASS_TYPE
+
+//内部的JSO成员实例名称，随机一些，和类成员重名后会出bug
+#ifndef JSON_INNER_MEMBER_NAME
+#define JSON_INNER_MEMBER_NAME ANameShouldNotBeSameWithStructMember23af00fa9
+#endif //JSON_INNER_MEMBER_NAME
 
 namespace mmrUtil
 {
@@ -90,6 +103,20 @@ struct enable_json_convert<T,
 		, std::declval<T>().parseJson(std::declval<const Json::Value&>())
 		, void())> //包含generateJson和parseJson接口
 	:std::true_type {};
+
+//是否为json互转方法的结构体有Json互转方法,且为多态类型
+template<typename T, typename = void>
+struct enable_json_convert_depl : std::false_type {};
+template<typename T>
+struct enable_json_convert_depl<T,
+	decltype(std::declval<T>().generateJson()
+		//, std::declval<T>().generateJson((std::declval<Json::Value&>()))
+		, std::declval<T>().parseJson(std::declval<const Json::Value&>())
+		, std::declval<T>().genClass(std::declval<const std::string&>())
+		, void())> //包含generateJson和parseJson接口
+	:std::true_type {};
+
+
 
 //可直接转换为Json类型
 template<typename T>
@@ -156,7 +183,7 @@ inline auto toJson(const _Ty& data)->typename std::enable_if<std::is_enum<_Ty>::
 template<typename _Ty>
 inline auto toJson(const _Ty& data)->typename std::enable_if<enable_json_convert<_Ty>::value, Json::Value>::type
 {
-	using extract_type = typename extract_value_type<_Ty>::type;
+	using extract_type = extract_value_type_t<_Ty>;
 	static_assert(is_convertable_to_json_type<extract_type>::value, "subtype error");
 	return data.generateJson();
 }
@@ -165,8 +192,8 @@ inline auto toJson(const _Ty& data)->typename std::enable_if<enable_json_convert
 template<typename _Ty>
 inline auto toJson(const _Ty& data)->typename std::enable_if<is_smart_ptr<_Ty>::value, Json::Value>::type
 {
-	using extract_type = typename extract_value_type_t<_Ty>;
-	using basic_type = typename basic_value_type_t<_Ty>;
+	using extract_type = extract_value_type_t<_Ty>;
+	using basic_type = basic_value_type_t<_Ty>;
 	static_assert(is_convertable_to_json_type<basic_type>::value, "basic type error");
 	if(nullptr == data)
 		return Json::Value();
@@ -178,8 +205,8 @@ inline auto toJson(const _Ty& data)->typename std::enable_if<is_smart_ptr<_Ty>::
 template<typename _Ty>
 inline auto toJson(const _Ty& data)->typename std::enable_if<is_optional<_Ty>::value, Json::Value>::type
 {
-	using extract_type = typename extract_value_type_t<_Ty>;
-	using basic_type = typename basic_value_type_t<_Ty>;
+	using extract_type = extract_value_type_t<_Ty>;
+	using basic_type = basic_value_type_t<_Ty>;
 	static_assert(is_convertable_to_json_type<basic_type>::value, "basic type error");
 	if (data.has_value())
 	{
@@ -192,8 +219,8 @@ inline auto toJson(const _Ty& data)->typename std::enable_if<is_optional<_Ty>::v
 template<typename _Ty>
 inline auto toJson(const _Ty& data)->typename std::enable_if<is_std_list<_Ty>::value, Json::Value>::type
 {
-	using extract_type = typename extract_value_type_t<_Ty>;
-	using basic_type = typename basic_value_type_t<_Ty>;
+	using extract_type = extract_value_type_t<_Ty>;
+	using basic_type = basic_value_type_t<_Ty>;
 	static_assert(is_convertable_to_json_type<basic_type>::value, "basic type error");	Json::Value jvRet;
 	for (const auto& iterData : data)
 	{
@@ -206,8 +233,8 @@ inline auto toJson(const _Ty& data)->typename std::enable_if<is_std_list<_Ty>::v
 template<typename _Ty>
 inline auto toJson(const _Ty& data)->typename std::enable_if<is_map<_Ty>::value, Json::Value>::type
 {
-	using extract_type = typename extract_value_type_t<_Ty>;
-	using basic_type = typename basic_value_type_t<_Ty>;
+	using extract_type = extract_value_type_t<_Ty>;
+	using basic_type = basic_value_type_t<_Ty>;
 	static_assert(is_convertable_to_json_type<basic_type>::value, "basic type error");
 	Json::Value jvRet;
 	for (const auto& iterData : data)
@@ -247,20 +274,21 @@ inline auto fromJson(const Json::Value& jvData)->typename std::enable_if<std::is
 template<typename _Ty>
 inline auto fromJson(const Json::Value& jvData)->typename std::enable_if<enable_json_convert<_Ty>::value, _Ty>::type
 {
-	using extract_type = typename extract_value_type_t<_Ty>;
-	using basic_type = typename basic_value_type_t<_Ty>;
+	using extract_type = extract_value_type_t<_Ty>;
+	using basic_type = basic_value_type_t<_Ty>;
 	static_assert(is_convertable_to_json_type<basic_type>::value, "basic type error");
 	_Ty data;
 	data.parseJson(jvData);
 	return data;
 }
 
-//shar_ptr或unique_ptr
+//shar_ptr或unique_ptr，非多态类型
 template<typename _Ty>
-inline auto fromJson(const Json::Value& jvData)->typename std::enable_if<is_smart_ptr<_Ty>::value, _Ty>::type 
+inline auto fromJson(const Json::Value& jvData)->typename std::enable_if<is_smart_ptr<_Ty>::value
+	&& !enable_json_convert_depl<extract_value_type_t<_Ty>>::value, _Ty>::type
 {
-	using extract_type = typename extract_value_type_t<_Ty>;
-	using basic_type = typename basic_value_type_t<_Ty>;
+	using extract_type = extract_value_type_t<_Ty>;
+	using basic_type = basic_value_type_t<_Ty>;
 	static_assert(is_convertable_to_json_type<basic_type>::value, "basic type error");
 	if (jvData.IsNull())
 		return nullptr;
@@ -268,12 +296,37 @@ inline auto fromJson(const Json::Value& jvData)->typename std::enable_if<is_smar
 		return std::make_unique<extract_type>(fromJson<extract_type>(jvData));
 }
 
+template<typename _Ty>
+inline auto fromJson(const Json::Value& jvData)->typename std::enable_if<is_smart_ptr<_Ty>::value
+	&& enable_json_convert_depl<extract_value_type_t<_Ty>>::value, _Ty>::type
+{
+	using extract_type = extract_value_type_t<_Ty>;
+	using basic_type = basic_value_type_t<_Ty>;
+	static_assert(is_convertable_to_json_type<basic_type>::value, "basic type error");
+	if (jvData.IsNull() || !jvData.hasKey(FINAL_CLASS_TYPE))
+		return nullptr;
+	else 
+	{
+		std::string strType = jvData[FINAL_CLASS_TYPE].get<std::string>();
+		auto ptrRet = extract_type::genClass(strType);
+		if (ptrRet)
+		{
+			ptrRet->parseJson(jvData);
+		}
+		else//抛出异常？ 
+		{
+			throw std::runtime_error(std::string("type [" + strType + "] do not regist to base class."));
+		}
+		return ptrRet;
+	}
+		
+}
 //optional
 template<typename _Ty>
 inline auto fromJson(const Json::Value& jvData)->typename std::enable_if<is_optional<_Ty>::value, _Ty>::type
 {
-	using extract_type = typename extract_value_type_t<_Ty>;
-	using basic_type = typename basic_value_type_t<_Ty>;
+	using extract_type = extract_value_type_t<_Ty>;
+	using basic_type = basic_value_type_t<_Ty>;
 	static_assert(is_convertable_to_json_type<basic_type>::value, "basic type error");
 	if (jvData.IsNull())
 		return std::nullopt;
@@ -285,8 +338,8 @@ inline auto fromJson(const Json::Value& jvData)->typename std::enable_if<is_opti
 template<typename _Ty>
 inline auto fromJson(const Json::Value& jvData)->typename std::enable_if<is_std_list<_Ty>::value, _Ty>::type
 {
-	using extract_type = typename extract_value_type_t<_Ty>;
-	using basic_type = typename basic_value_type_t<_Ty>;
+	using extract_type = extract_value_type_t<_Ty>;
+	using basic_type = basic_value_type_t<_Ty>;
 	static_assert(is_convertable_to_json_type<basic_type>::value, "basic type error");	_Ty retArray;
 	for (const auto& iterJv : jvData.ArrayRange())
 	{
@@ -299,8 +352,8 @@ inline auto fromJson(const Json::Value& jvData)->typename std::enable_if<is_std_
 template<typename _Ty>
 inline auto fromJson(const Json::Value& jvData)->typename std::enable_if<is_map<_Ty>::value, _Ty>::type
 {
-	using extract_type = typename extract_value_type_t<_Ty>;
-	using basic_type = typename basic_value_type_t<_Ty>;
+	using extract_type = extract_value_type_t<_Ty>;
+	using basic_type = basic_value_type_t<_Ty>;
 	static_assert(is_convertable_to_json_type<basic_type>::value, "basic type error");
 	_Ty mapRet;
 	for (const auto& iterMap : jvData.ObjectRange())
@@ -385,42 +438,141 @@ inline void parseJsonVars(const Json::Value& jvData, const char* name, T& value,
 public:\
 Json::Value generateJson() const\
 {\
-	Json::Value ANameShouldNotBeSameWithStructMember23af00fa9;\
-	mmrUtil::generatJsonVars(ANameShouldNotBeSameWithStructMember23af00fa9, #__VA_ARGS__, __VA_ARGS__);\
-	return ANameShouldNotBeSameWithStructMember23af00fa9;\
+	Json::Value JSON_INNER_MEMBER_NAME;\
+	mmrUtil::generatJsonVars(JSON_INNER_MEMBER_NAME, #__VA_ARGS__, __VA_ARGS__);\
+	return JSON_INNER_MEMBER_NAME;\
 }\
-void parseJson(const Json::Value& ANameShouldNotBeSameWithStructMember23af00fa9)\
+void parseJson(const Json::Value& JSON_INNER_MEMBER_NAME)\
 {\
-	mmrUtil::parseJsonVars(ANameShouldNotBeSameWithStructMember23af00fa9, #__VA_ARGS__, __VA_ARGS__); \
+	mmrUtil::parseJsonVars(JSON_INNER_MEMBER_NAME, #__VA_ARGS__, __VA_ARGS__); \
 }\
 protected:\
 friend class Json::Value;\
-void generateJson(Json::Value& ANameShouldNotBeSameWithStructMember23af00fa9) const\
+void generateJson(Json::Value& JSON_INNER_MEMBER_NAME) const\
 {\
-	mmrUtil::generatJsonVars(ANameShouldNotBeSameWithStructMember23af00fa9, #__VA_ARGS__, __VA_ARGS__); \
+	mmrUtil::generatJsonVars(JSON_INNER_MEMBER_NAME, #__VA_ARGS__, __VA_ARGS__); \
 }
 
 
 #define ADD_JSON_MEMBER_INHERIT(Base, ...) 	\
 public:\
-Json::Value generateJson() const\
-{\
-	Json::Value ANameShouldNotBeSameWithStructMember23af00fa9;\
-	Base::generateJson(ANameShouldNotBeSameWithStructMember23af00fa9);\
-	mmrUtil::generatJsonVars(ANameShouldNotBeSameWithStructMember23af00fa9, #__VA_ARGS__, __VA_ARGS__);\
-	return ANameShouldNotBeSameWithStructMember23af00fa9;\
-}\
-void parseJson(const Json::Value& ANameShouldNotBeSameWithStructMember23af00fa9)\
-{\
-	Base::parseJson(ANameShouldNotBeSameWithStructMember23af00fa9);\
-	mmrUtil::parseJsonVars(ANameShouldNotBeSameWithStructMember23af00fa9, #__VA_ARGS__, __VA_ARGS__); \
-}\
+	Json::Value generateJson() const\
+	{\
+		Json::Value JSON_INNER_MEMBER_NAME;\
+		Base::generateJson(JSON_INNER_MEMBER_NAME);\
+		mmrUtil::generatJsonVars(JSON_INNER_MEMBER_NAME, #__VA_ARGS__, __VA_ARGS__);\
+		return JSON_INNER_MEMBER_NAME;\
+	}\
+	void parseJson(const Json::Value& JSON_INNER_MEMBER_NAME)\
+	{\
+		Base::parseJson(JSON_INNER_MEMBER_NAME);\
+		mmrUtil::parseJsonVars(JSON_INNER_MEMBER_NAME, #__VA_ARGS__, __VA_ARGS__); \
+	}\
 protected:\
-friend class Json::Value;\
-void generateJson(Json::Value& ANameShouldNotBeSameWithStructMember23af00fa9) const\
-{\
-	Base::generateJson(ANameShouldNotBeSameWithStructMember23af00fa9);\
-	mmrUtil::generatJsonVars(ANameShouldNotBeSameWithStructMember23af00fa9, #__VA_ARGS__, __VA_ARGS__); \
-}
+	friend class Json::Value;\
+	void generateJson(Json::Value& JSON_INNER_MEMBER_NAME) const\
+	{\
+		Base::generateJson(JSON_INNER_MEMBER_NAME);\
+		mmrUtil::generatJsonVars(JSON_INNER_MEMBER_NAME, #__VA_ARGS__, __VA_ARGS__); \
+	}
+
+
+//Json与结构体互转，多态支持
+#define ADD_JSON_MEMBER_BASE_DEPL_COMM(Base, ...)\
+public:\
+	virtual ~Base() = default;\
+	virtual Json::Value generateJson() const\
+	{\
+		Json::Value JSON_INNER_MEMBER_NAME;\
+		mmrUtil::generatJsonVars(JSON_INNER_MEMBER_NAME, #__VA_ARGS__, __VA_ARGS__);\
+		JSON_INNER_MEMBER_NAME[FINAL_CLASS_TYPE] = #Base;\
+		return JSON_INNER_MEMBER_NAME;\
+	}\
+	virtual void parseJson(const Json::Value& JSON_INNER_MEMBER_NAME)\
+	{\
+		mmrUtil::parseJsonVars(JSON_INNER_MEMBER_NAME, #__VA_ARGS__, __VA_ARGS__);\
+	}\
+	protected:\
+		friend class Json::Value;\
+		virtual void generateJson(Json::Value& JSON_INNER_MEMBER_NAME) const\
+		{\
+			mmrUtil::generatJsonVars(JSON_INNER_MEMBER_NAME, #__VA_ARGS__, __VA_ARGS__);\
+		}\
+public:\
+	using BasePtrType = std::unique_ptr<Base>;/*基类指针*/\
+	using TypeGenFunc = std::function<BasePtrType(void)>;\
+	static BasePtrType genClass(const std::string& strType)\
+	{\
+		auto iterGenFunc = getAllMapGenFunc().find(strType);\
+		return iterGenFunc != getAllMapGenFunc().end() ? iterGenFunc->second() : nullptr;\
+	}\
+	template<typename _T>\
+	struct RegGenFunc\
+	{\
+		RegGenFunc(std::string strType)\
+		{\
+			AddGenFunc(strType, std::bind(&RegGenFunc::genFunc, this));\
+		}\
+		BasePtrType genFunc()\
+		{\
+			return std::make_unique<_T>();\
+		}\
+	};\
+protected:\
+	static void AddGenFunc(const std::string strType, TypeGenFunc&& func)\
+	{\
+		getAllMapGenFunc().insert(std::make_pair(strType, std::move(func)));\
+	}\
+private:\
+	static std::map<std::string, TypeGenFunc>& getAllMapGenFunc()\
+	{\
+		static std::map<std::string, TypeGenFunc> mapFunc;\
+		return mapFunc;\
+	}\
+
+#define ADD_JSON_MEMBER_DERIVE_DEPL_COMM(Parent,Derive, ...)\
+public:\
+	virtual ~Derive() = default;\
+	virtual Json::Value generateJson() const\
+	{\
+		Json::Value JSON_INNER_MEMBER_NAME;\
+		Parent::generateJson(JSON_INNER_MEMBER_NAME);\
+		mmrUtil::generatJsonVars(JSON_INNER_MEMBER_NAME, #__VA_ARGS__, __VA_ARGS__);\
+		JSON_INNER_MEMBER_NAME[FINAL_CLASS_TYPE] = #Derive;\
+		return JSON_INNER_MEMBER_NAME;\
+	}\
+	virtual void parseJson(const Json::Value& JSON_INNER_MEMBER_NAME)\
+	{\
+		Parent::parseJson(JSON_INNER_MEMBER_NAME);\
+		mmrUtil::parseJsonVars(JSON_INNER_MEMBER_NAME, #__VA_ARGS__, __VA_ARGS__);\
+	}\
+	protected:\
+		friend class Json::Value;\
+		virtual void generateJson(Json::Value& JSON_INNER_MEMBER_NAME) const\
+		{\
+			Parent::generateJson(JSON_INNER_MEMBER_NAME);\
+			mmrUtil::generatJsonVars(JSON_INNER_MEMBER_NAME, #__VA_ARGS__, __VA_ARGS__);\
+		}
+
+#if __cplusplus >= 201703L // C++17 及以后：使用 inline 静态成员，直接在类内定义并初始化
+#define ADD_JSON_MEMBER_BASE_DEPL(Base, ...)\
+ADD_JSON_MEMBER_BASE_DEPL_COMM(Base, __VA_ARGS__)\
+	static inline RegGenFunc<Base> gemMember##Base = RegGenFunc<Base>(#Base);
+
+#define ADD_JSON_MEMBER_DERIVE_DEPL(Parent,Derive, ...)\
+ADD_JSON_MEMBER_DERIVE_DEPL_COMM(Parent,Derive, __VA_ARGS__)\
+	static inline RegGenFunc<Derive> gemMember##Derive = RegGenFunc<Derive>(#Derive);
+#else // C++14 静态成员需要在类外单独定义，此处只声明
+#define ADD_JSON_MEMBER_BASE_DEPL(Base, ...)\
+ADD_JSON_MEMBER_BASE_DEPL_COMM(Base, __VA_ARGS__)\
+	static RegGenFunc<Base> gemMember##Base;
+
+#define ADD_JSON_MEMBER_DERIVE_DEPL(Parent,Derive, ...)\
+ADD_JSON_MEMBER_DERIVE_DEPL_COMM(Parent,Derive, __VA_ARGS__)\
+	static RegGenFunc<Derive> gemMember##Derive;
+
+#define REGISTER_TEPE(Type) Type::RegGenFunc<Type> gemMember##Type = Type::RegGenFunc<Type>(#Type);
+#endif
+
 
 #endif

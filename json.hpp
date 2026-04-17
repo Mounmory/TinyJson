@@ -287,11 +287,20 @@ namespace Json
 			SetType(emJsonType::Object); return Internal.Map->operator[](key);
 		}
 
-		Value& operator[](unsigned index) {
-			SetType(emJsonType::Array);
-			if (index >= Internal.List->size()) Internal.List->resize(index + 1);
-			return Internal.List->operator[](index);
-		}
+	const Value& operator[](const std::string &key) const {
+		return Internal.Map->operator[](key);
+	}
+
+	Value& operator[](unsigned index) {
+		SetType(emJsonType::Array);
+		if (index >= Internal.List->size()) Internal.List->resize(index + 1);
+		return Internal.List->operator[](index);
+	}
+
+	const Value& operator[](unsigned index) const{
+		if (index >= Internal.List->size()) Internal.List->resize(index + 1);
+		return Internal.List->operator[](index);
+	}
 
 		Value &at(const std::string &key) {
 			return operator[](key);
@@ -357,32 +366,81 @@ namespace Json
 				throw std::runtime_error(ss.str());
 			}
 			return ret;
-		}
+	}
 
-		template<typename T>
-		typename std::enable_if<std::is_arithmetic<T>::value, T>::type get(bool& bRet) const
+	template<typename T>
+	typename std::enable_if<std::is_arithmetic<T>::value && !std::is_floating_point<T>::value && !std::is_same<T, bool>::value, T>::type
+		get(bool& bRet) const
 	{
 		bRet = true;
-		static constexpr auto numMax = (std::numeric_limits<T>::max)();
-		static constexpr auto numMin = (std::numeric_limits<T>::min)();
 		switch (Type)
 		{
 		//case emJsonType::Null: return T();
 		case emJsonType::Boolean: return Internal.Bool;
 		case emJsonType::Integral:
 		{
-			if (Internal.Int >= numMin && numMax >= Internal.Int)
+			if (Internal.Int >= (std::numeric_limits<T>::min)() && (std::numeric_limits<T>::max)() >= Internal.Int)
 				return Internal.Int;
 		}
 		break;
 		case emJsonType::Uintegral:
 		{
-			if (Internal.Uint64 >= numMin && numMax >= Internal.Uint64)
+			if (Internal.Uint64 >= (std::numeric_limits<T>::min)() && Internal.Uint64 <= (std::numeric_limits<T>::max)())
 				return Internal.Uint64;
 		}break;
 		case emJsonType::Floating:
 		{
-			if (Internal.Float >= numMin && numMax >= Internal.Float)
+			if (Internal.Float >= (std::numeric_limits<T>::min)() && Internal.Float <= (std::numeric_limits<T>::max)())
+				return Internal.Float;
+		}break;
+		default:
+			break;
+		}
+		bRet = false;
+		return T();
+	}
+
+	template<typename T>
+	typename std::enable_if<std::is_same<T, bool>::value, bool>::type
+		get(bool& bRet) const
+	{
+		bRet = true;
+		switch (Type)
+		{
+			//case emJsonType::Null: return T();
+		case emJsonType::Boolean: return Internal.Bool;
+		case emJsonType::Integral: return Internal.Int ? true : false;
+		case emJsonType::Uintegral:	return Internal.Uint64 ? true : false;
+		case emJsonType::Floating:	return Internal.Float != 0.0 ? true : false;
+		default:
+			break;
+		}
+		bRet = false;
+		return T();
+	}
+
+	template<typename T>
+	typename std::enable_if<std::is_floating_point<T>::value, T>::type get(bool& bRet) const
+	{
+		bRet = true;
+		switch (Type)
+		{
+			//case emJsonType::Null: return T();
+		case emJsonType::Boolean: return Internal.Bool;
+		case emJsonType::Integral:
+		{
+			if (Internal.Int >= (std::numeric_limits<T>::lowest)() && (std::numeric_limits<T>::max)() >= Internal.Int)
+				return Internal.Int;
+		}
+		break;
+		case emJsonType::Uintegral:
+		{
+			if (Internal.Uint64 >= (std::numeric_limits<T>::lowest)() && Internal.Uint64 <= (std::numeric_limits<T>::max)())
+				return Internal.Uint64;
+		}break;
+		case emJsonType::Floating:
+		{
+			if (Internal.Float >= (std::numeric_limits<T>::lowest)() && Internal.Float <= (std::numeric_limits<T>::max)())
 				return Internal.Float;
 		}break;
 		default:
